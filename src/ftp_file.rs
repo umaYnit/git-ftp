@@ -1,7 +1,10 @@
 use std::error::Error;
+use std::fs::File;
+use std::io;
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 
-use ssh2::Sftp;
+use ssh2::{Session, Sftp};
 
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum FileEntry {
@@ -58,4 +61,31 @@ impl RemoteFileEntry {
 
         Ok(())
     }
+}
+
+
+fn deal_files(file: &Path) -> Result<(), Box<dyn Error>> {
+    let tcp = TcpStream::connect("xxx.xxx.xxx.xxx:22")?;
+    let mut sess = Session::new()?;
+    sess.set_tcp_stream(tcp);
+    sess.handshake()?;
+
+    sess.userauth_password("xxxx", "xxxxxx")?;
+    assert!(sess.authenticated());
+
+    let sftp = sess.sftp()?;
+
+    push_file(&sftp, file)?;
+
+    Ok(())
+}
+
+fn push_file(sftp: &Sftp, file_name: &Path) -> Result<(), Box<dyn Error>> {
+    let mut root = PathBuf::from("/root/ftp");
+    root.push(file_name);
+    RemoteFileEntry::create_dir_all(sftp, root.parent().unwrap())?;
+    let mut file = sftp.create(&root)?;
+
+    io::copy(&mut File::open(file_name)?, &mut file)?;
+    Ok(())
 }

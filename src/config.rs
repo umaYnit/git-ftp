@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::process::Command;
 
-use directories::BaseDirs;
+const STD_EDITOR: &str = "notepad";
 
 pub fn edit_configuration() {
     let config_path = get_config_path();
@@ -14,7 +14,7 @@ pub fn edit_configuration() {
         .expect("environment variable contains invalid unicode")
         .split_whitespace();
 
-    let editor = cmd_iter.next().unwrap_or(STD_EDITOR);
+    let editor = cmd_iter.next().unwrap();
     let args: Vec<_> = cmd_iter.collect();
 
     let command = Command::new(editor).args(args).arg(config_path).status();
@@ -24,7 +24,7 @@ pub fn edit_configuration() {
         Err(error) => match error.kind() {
             ErrorKind::NotFound => {
                 eprintln!(
-                    "Error: editor {:?} was not found. Did you set your $EDITOR or $VISUAL \
+                    "Error: editor {:?} was not found. Did you set your $EDITOR \
                     environment variables correctly?",
                     editor
                 );
@@ -38,15 +38,8 @@ pub fn edit_configuration() {
 
 
 fn get_editor() -> OsString {
-    get_editor_internal(env::var_os("VISUAL"), env::var_os("EDITOR"))
-}
-
-fn get_editor_internal(visual: Option<OsString>, editor: Option<OsString>) -> OsString {
-    let mut editor_name = visual.unwrap_or_else(|| "".into());
-    if !editor_name.is_empty() {
-        return editor_name;
-    }
-    editor_name = editor.unwrap_or_else(|| "".into());
+    // TODO 从配置文件中读取编辑器路径
+    let editor_name = env::var_os("EDITOR").unwrap_or_else(|| "".into());
     if !editor_name.is_empty() {
         return editor_name;
     }
@@ -55,5 +48,5 @@ fn get_editor_internal(visual: Option<OsString>, editor: Option<OsString>) -> Os
 
 
 fn get_config_path() -> OsString {
-    BaseDirs::new().expect("couldn't find home directory").into()
+    "C:\\Users\\airocov\\CLionProjects\\git_push\\Cargo.toml".into()
 }
