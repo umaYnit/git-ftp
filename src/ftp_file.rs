@@ -38,7 +38,7 @@ pub struct LocalFileEntry(FileEntry);
 pub struct RemoteFileEntry(FileEntry);
 
 impl RemoteFileEntry {
-    pub fn exists(path: impl AsRef<Path>, sftp: &Sftp) -> Result<bool, Box<dyn Error>> {
+    pub fn exists(sftp: &Sftp, path: impl AsRef<Path>) -> Result<bool, Box<dyn Error>> {
         match sftp.stat(path.as_ref()) {
             // NOTE: `stat` will fail if this path does not exist on the remote host. We
             //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
@@ -54,7 +54,7 @@ impl RemoteFileEntry {
         if path == Path::new("") {
             return Ok(());
         };
-        if RemoteFileEntry::exists(path, sftp)? {
+        if RemoteFileEntry::exists(sftp, path)? {
             return Ok(());
         } else {
             match path.parent() {
@@ -139,16 +139,10 @@ fn delete_file(sftp: &Sftp, file_name: &Path, target: &Path) -> Result<(), Box<d
     let mut trash_path = PathBuf::from(TRASH_DIR);
     trash_path.push(file_name);
 
-    match sftp.rename(&root, &trash_path, None) {
-        // NOTE: `stat` will fail if this path does not exist on the remote host. We
-        //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
-        Err(error) => match error.code() {
-            libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL => {
-                println!("file [{:?}] not exist in remote server", file_name);
-                Ok(())
-            }
-            _ => Err(error.into()),
-        },
-        Ok(_) => Ok(()),
-    }
+    if !RemoteFileEntry::exists(sftp, &root)? {
+        println!("file [{:?}] not exist in remote server", file_name);
+    } else {
+        sftp.rename(&root, &trash_path, None)?;
+    };
+    Ok(())
 }

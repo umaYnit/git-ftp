@@ -86,7 +86,7 @@ username = 'example'
 password = 'example'
 port = 22                   # Can be omitted, default 22
 
-    ";
+";
     f.write_all(init_config.as_bytes()).map_err(CustomError::WriteConfigurationFileError)?;
     Ok(())
 }
