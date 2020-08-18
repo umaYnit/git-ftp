@@ -69,6 +69,10 @@ impl RemoteFileEntry {
 }
 
 pub fn deal_git_files(server_config: &ServerConfig, source: String, target: String) -> Result<(), Box<dyn Error>> {
+    println!("source{:?}", source);
+    println!("target{:?}", target);
+
+
     let source = source.into();
     let deal_files = recipe_modified(&source)?;
 
@@ -84,16 +88,18 @@ pub fn deal_git_files(server_config: &ServerConfig, source: String, target: Stri
     let sftp = sess.sftp()?;
 
     let target = &PathBuf::from(&target);
-
+    println!("1111{:?}", target);
     for x in deal_files.changed() {
-        push_file(&sftp, x, &source, &PathBuf::from(target))?;
+        push_file(&sftp, x, &source, target)?;
     }
+    println!("2222{:?}", target);
 
     RemoteFileEntry::create_dir_all(&sftp, &PathBuf::from(TRASH_DIR))?;
 
     for x in deal_files.deleted() {
-        delete_file(&sftp, x, &PathBuf::from(target))?;
+        delete_file(&sftp, x, target)?;
     }
+    println!("33333{:?}", target);
 
     for x in deal_files.others() {
         println!("unknown file: {:?}", x);
@@ -142,6 +148,9 @@ fn delete_file(sftp: &Sftp, file_name: &Path, target: &Path) -> Result<(), Box<d
     if !RemoteFileEntry::exists(sftp, &root)? {
         println!("file [{:?}] not exist in remote server", file_name);
     } else {
+        println!("rename: root {:?}", &root);
+        println!("rename: trash_path {:?}", &trash_path);
+
         sftp.rename(&root, &trash_path, None)?;
     };
     Ok(())
