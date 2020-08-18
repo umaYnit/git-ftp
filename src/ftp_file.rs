@@ -6,6 +6,11 @@ use std::path::{Path, PathBuf};
 
 use ssh2::{Session, Sftp};
 
+use crate::config::ServerConfig;
+use crate::git_file::recipe_modified;
+
+const TRASH_DIR: &str = "/home/.trash";
+
 #[derive(Clone, PartialEq, Eq, Ord)]
 pub enum FileEntry {
     File(PathBuf, u64),
@@ -63,29 +68,87 @@ impl RemoteFileEntry {
     }
 }
 
+pub fn deal_git_files(server_config: &ServerConfig, source: String, target: String) -> Result<(), Box<dyn Error>> {
+    let source = source.into();
+    let deal_files = recipe_modified(&source)?;
 
-fn deal_files(file: &Path) -> Result<(), Box<dyn Error>> {
-    let tcp = TcpStream::connect("xxx.xxx.xxx.xxx:22")?;
+    let port = server_config.port.unwrap_or(22);
+    let tcp = TcpStream::connect(format!("{}:{}", server_config.ip, port))?;
     let mut sess = Session::new()?;
     sess.set_tcp_stream(tcp);
     sess.handshake()?;
 
-    sess.userauth_password("xxxx", "xxxxxx")?;
+    sess.userauth_password(&server_config.username, &server_config.password)?;
     assert!(sess.authenticated());
 
     let sftp = sess.sftp()?;
 
-    push_file(&sftp, file)?;
+    let target = &PathBuf::from(&target);
+
+    for x in deal_files.changed() {
+        push_file(&sftp, x, &source, &PathBuf::from(target))?;
+    }
+
+    RemoteFileEntry::create_dir_all(&sftp, &PathBuf::from(TRASH_DIR))?;
+
+    for x in deal_files.deleted() {
+        delete_file(&sftp, x, &PathBuf::from(target))?;
+    }
+
+    for x in deal_files.others() {
+        println!("unknown file: {:?}", x);
+    }
 
     Ok(())
 }
 
-fn push_file(sftp: &Sftp, file_name: &Path) -> Result<(), Box<dyn Error>> {
-    let mut root = PathBuf::from("/root/ftp");
+// fn deal_file(file: &Path) -> Result<(), Box<dyn Error>> {
+//     let tcp = TcpStream::connect("xxx.xxx.xxx.xxx:22")?;
+//     let mut sess = Session::new()?;
+//     sess.set_tcp_stream(tcp);
+//     sess.handshake()?;
+//
+//     sess.userauth_password("xxxx", "xxxxxx")?;
+//     assert!(sess.authenticated());
+//
+//     let sftp = sess.sftp()?;
+//
+//     push_file(&sftp, file)?;
+//
+//     Ok(())
+// }
+
+
+fn push_file(sftp: &Sftp, file_name: &Path, source: &Path, target: &Path) -> Result<(), Box<dyn Error>> {
+    let mut root = target.to_path_buf();
     root.push(file_name);
+
+    let mut src = source.to_path_buf();
+    src.push(file_name);
+
     RemoteFileEntry::create_dir_all(sftp, root.parent().unwrap())?;
     let mut file = sftp.create(&root)?;
-
-    io::copy(&mut File::open(file_name)?, &mut file)?;
+    io::copy(&mut File::open(&src)?, &mut file)?;
     Ok(())
+}
+
+fn delete_file(sftp: &Sftp, file_name: &Path, target: &Path) -> Result<(), Box<dyn Error>> {
+    let mut root = target.to_path_buf();
+    root.push(file_name);
+
+    let mut trash_path = PathBuf::from(TRASH_DIR);
+    trash_path.push(file_name);
+
+    match sftp.rename(&root, &trash_path, None) {
+        // NOTE: `stat` will fail if this path does not exist on the remote host. We
+        //        assume this is the case when `stat` returns `LIBSSH2_ERROR_SFTP_PROTOCOL`.
+        Err(error) => match error.code() {
+            libssh2_sys::LIBSSH2_ERROR_SFTP_PROTOCOL => {
+                println!("file [{:?}] not exist in remote server", file_name);
+                Ok(())
+            }
+            _ => Err(error.into()),
+        },
+        Ok(_) => Ok(()),
+    }
 }
